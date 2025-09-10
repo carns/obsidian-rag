@@ -37,16 +37,38 @@ def regenerate_index():
     # Iterate through vault looking for .md files.
     # For each directory in the tree rooted at the directory top (including
     # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
+    file_count = 0
     for root, _, files in os.walk(OBSIDIAN_VAULT_PATH):
+        if file_count >= 5:
+            break
         for filename in files:
             if filename.endswith(".md"):
                 filepath = os.path.join(root, filename)
                 try:
                     with open(filepath, 'r') as f:
                         content = f.read()
-                        char_count = len(content)
                         print(f"File: {filepath}")
-                        print(f"  Character Count: {char_count}\n")
+                        # note that we are not chunking; generate an
+                        # embedding for the entire contents of the .md file
+                        vectors = embedding_fn.encode_documents([content])
+                        if vectors[0].shape[0] != 768:
+                            raise ValueError(
+                                f"Embedding dimension mismatch for {filepath}. "
+                                f"Expected 768 but got {vectors[0].shape[0]}"
+                            )
+                        # storing the path to the file in the db, not the
+                        # contents of the file
+                        # TODO: restructure this to insert vectors as a
+                        # batch.  Right now doing one embedding and one
+                        # insertion at a time to get an understanding of the
+                        # process.
+                        client.insert(collection_name="notes", data={"id": file_count, "vector": vectors[0], "path": filepath})
+                        file_count += 1
+                        # TODO: temporary short circuit while prototyping;
+                        # it is too expensive to calculate emdeddings for
+                        # all notes
+                        if file_count >= 5:
+                            break
                 except IOError as e:
                     print(f"Error reading file '{filepath}': {e}. Skipping.")
 
