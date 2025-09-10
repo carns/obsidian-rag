@@ -24,9 +24,12 @@ def regenerate_index():
 
     print(f"[{OBSIDIAN_VAULT_PATH}] Regenerating index...")
 
-    # TODO: try a more sophisticated model
+    # TODO: try a more sophisticated model. per Seth recommendation, start
+    # with https://huggingface.co/sentence-transformers
+
     # TODO: can we query the dimensionality of the model first, and set the
     # collection dimensions based on that, instead of hard coding?
+
     # This will download a small embedding model
     # "paraphrase-albert-small-v2" (~50MB).
     embedding_fn = model.DefaultEmbeddingFunction()
