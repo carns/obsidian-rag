@@ -1,3 +1,4 @@
 pip-tools
 pymilvus
 argparse
+pymilvus[model]

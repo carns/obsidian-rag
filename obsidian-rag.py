@@ -3,15 +3,50 @@
 import argparse
 import os
 from pymilvus import MilvusClient
+from pymilvus import model
 
 # --- Module-level Constants ---
 OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
+OBSIDIAN_VAULT_DB = OBSIDIAN_VAULT_PATH + "/milvus_index.db"
 
 def regenerate_index():
     """
     Placeholder function for regenerating the index.
     """
+    print(f"[{OBSIDIAN_VAULT_PATH}] Opening database...")
+    client = MilvusClient(OBSIDIAN_VAULT_DB)
+    if client.has_collection(collection_name="notes"):
+        client.drop_collection(collection_name="notes")
+    client.create_collection(
+        collection_name="notes",
+        dimension=768,
+    )
+
     print(f"[{OBSIDIAN_VAULT_PATH}] Regenerating index...")
+
+    # TODO: try a more sophisticated model
+    # TODO: can we query the dimensionality of the model first, and set the
+    # collection dimensions based on that, instead of hard coding?
+    # This will download a small embedding model
+    # "paraphrase-albert-small-v2" (~50MB).
+    embedding_fn = model.DefaultEmbeddingFunction()
+
+    # Iterate through vault looking for .md files.
+    # For each directory in the tree rooted at the directory top (including
+    # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
+    for root, _, files in os.walk(OBSIDIAN_VAULT_PATH):
+        for filename in files:
+            if filename.endswith(".md"):
+                filepath = os.path.join(root, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        content = f.read()
+                        char_count = len(content)
+                        print(f"File: {filepath}")
+                        print(f"  Character Count: {char_count}\n")
+                except IOError as e:
+                    print(f"Error reading file '{filepath}': {e}. Skipping.")
+
     # In a real scenario, you'd add your indexing logic here
     # Example: scan files, build a search index, etc.
     print("Index regenerated successfully.")
