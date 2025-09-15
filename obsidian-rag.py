@@ -80,6 +80,16 @@ def query_vault(query_string):
     """
     Placeholder function for querying the vault.
     """
+
+    print(f"[{OBSIDIAN_VAULT_PATH}] Opening database...")
+
+    client = MilvusClient(OBSIDIAN_VAULT_DB)
+    if not client.has_collection(collection_name="notes"):
+        raise ValueError(
+            f"'notes' collection not found in {OBSIDIAN_VAULT_DB}"
+        )
+
+
     print(f"[{OBSIDIAN_VAULT_PATH}] Querying for: '{query_string}'")
     # In a real scenario, you'd add your query logic here
     # Example: search your index, grep files, etc.
