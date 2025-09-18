@@ -3,10 +3,12 @@
 import argparse
 import time
 import os
-from google import genai
-
+import numpy as np
+from numpy.linalg import norm
 from pymilvus import MilvusClient
 from pymilvus import model
+from google import genai
+from google.genai import types
 
 # --- Module-level Constants ---
 OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
@@ -83,10 +85,8 @@ def gen_embeddings_gemini_batch(contents:list) -> float:
     client = genai.Client(api_key=api_key)
 
     start_time = time.perf_counter()
-    result = client.models.embed_content(model=GEMINI_MODEL_NAME,
-                                          contents=contents,
-                                          config=types.EmbedContentConfig(output_dimensionality=768))
-    # TODO: how to interpret result
+
+    # TODO: fill this in, see google docs for batch mode
 
     end_time = time.perf_counter()
 
@@ -118,8 +118,23 @@ def gen_embeddings_gemini(contents:list) -> float:
 
     start_time = time.perf_counter()
     result = client.models.embed_content(model=GEMINI_MODEL_NAME,
-                                          contents=contents)
-    # TODO: how to interpret result
+                                         contents=contents,
+                                         config=types.EmbedContentConfig(output_dimensionality=768))
+
+    # TODO: this isn't right. Need to do row-wise normalization, and keep
+    # the dimensions at 10x768.  I'm not sure it makes sense to do this in
+    # one big matrix like this.
+    # TODO maybe convert in and out of numpy one array/list at a time; it
+    # depends on what format we want the final result to be in
+    embedding_values_np = np.empty((10,768))
+    for i, embedding_obj in enumerate(result.embeddings):
+        embedding_values_np[i,:] = embedding_obj.values
+    normed_embedding = embedding_values_np / np.linalg.norm(embedding_values_np)
+
+    print(f"Normed embedding length: {len(normed_embedding)}")
+    print(f"Norm of normed embedding: {np.linalg.norm(normed_embedding):.6f}") # Should be very close to 1
+
+    breakpoint()
 
     end_time = time.perf_counter()
 
@@ -206,8 +221,8 @@ def main():
     print(f"Elapsed time (seconds) for encoding {BATCH_SIZE} files")
     print(f"-------------------------")
 
-    elapsed = gen_embeddings_milvus_default(contents)
-    print(f"Milvus DefaultEmbeddingFunction: {elapsed}")
+    # elapsed = gen_embeddings_milvus_default(contents)
+    # print(f"Milvus DefaultEmbeddingFunction: {elapsed}")
 
     elapsed = gen_embeddings_gemini(contents)
     print(f"Gemini: {elapsed}")

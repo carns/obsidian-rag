@@ -6,3 +6,4 @@ pymilvus[model]
 torch==2.8.0+cpu
 torchvision==0.23.0+cpu
 google-genai
+numpy
