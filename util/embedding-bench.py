@@ -59,6 +59,40 @@ def get_google_api_key() -> str:
 
     return google_api_key
 
+def gen_embeddings_gemini_batch(contents:list) -> float:
+    """
+    Generate embeddings for each of the text strings
+
+    Args:
+        contents (list): list of strings
+
+    Returns:
+        float: floating point seconds elapsed
+    """
+
+    # get api key
+    try:
+        api_key = get_google_api_key()
+    except GoogleAPIKeyError as e:
+        print(f"Error: could not ackquire API key: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    client = genai.Client(api_key=api_key)
+
+    start_time = time.perf_counter()
+    result = client.models.embed_content(model=GEMINI_MODEL_NAME,
+                                          contents=contents,
+                                          config=types.EmbedContentConfig(output_dimensionality=768))
+    # TODO: how to interpret result
+
+    end_time = time.perf_counter()
+
+    return end_time-start_time
+
+
 def gen_embeddings_gemini(contents:list) -> float:
     """
     Generate embeddings for each of the text strings
