@@ -122,14 +122,13 @@ def gen_embeddings_gemini(contents:list) -> float:
                                          config=types.EmbedContentConfig(output_dimensionality=768))
 
     # TODO: this isn't right. Need to do row-wise normalization, and keep
-    # the dimensions at 10x768.  I'm not sure it makes sense to do this in
-    # one big matrix like this.
-    # TODO maybe convert in and out of numpy one array/list at a time; it
-    # depends on what format we want the final result to be in
+    # the dimensions at 10x768.  This can all be done in numpy.
     embedding_values_np = np.empty((10,768))
     for i, embedding_obj in enumerate(result.embeddings):
         embedding_values_np[i,:] = embedding_obj.values
     normed_embedding = embedding_values_np / np.linalg.norm(embedding_values_np)
+    # TODO: should we convert back to a 2d list after the numpy steps?  that
+    # might be more representative of what we have to do at db insert time
 
     print(f"Normed embedding length: {len(normed_embedding)}")
     print(f"Norm of normed embedding: {np.linalg.norm(normed_embedding):.6f}") # Should be very close to 1
