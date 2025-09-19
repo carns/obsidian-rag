@@ -87,7 +87,14 @@ def gen_embeddings_gemini_batch(contents:list) -> float:
 
     start_time = time.perf_counter()
     # TODO: can't figure out how to format this correctly in current API
-    inline_requests_list = {"foo":"bar"}
+    # https://developers.googleblog.com/en/gemini-batch-api-now-supports-embeddings-and-openai-compatibility/
+    # only shows how to do it if you upload content to operate on rather
+    # than using inlined requests
+    inline_requests_list = [
+        {"key": "request_1", "request": {"output_dimensionality": 512, "content": {"parts": [{"text": "Explain GenAI"}]}}},
+        {"key": "request_2", "request": {"output_dimensionality": 512, "content": {"parts": [{"text": "Explain quantum computing"}]}}}
+    ]
+
     # breakpoint();
 
     # Create the batch job with the inline requests.
