@@ -121,22 +121,37 @@ def gen_embeddings_gemini(contents:list) -> float:
                                          contents=contents,
                                          config=types.EmbedContentConfig(output_dimensionality=768))
 
-    # TODO: this isn't right. Need to do row-wise normalization, and keep
-    # the dimensions at 10x768.  This can all be done in numpy.
-    embedding_values_np = np.empty((10,768))
+
+    # load the resulting embeddings into a numpy 2D matrix, one row per
+    # embedding
+    embedding_values_np = np.empty((BATCH_SIZE, 768))
     for i, embedding_obj in enumerate(result.embeddings):
         embedding_values_np[i,:] = embedding_obj.values
-    normed_embedding = embedding_values_np / np.linalg.norm(embedding_values_np)
-    # TODO: should we convert back to a 2d list after the numpy steps?  that
-    # might be more representative of what we have to do at db insert time
 
-    print(f"Normed embedding length: {len(normed_embedding)}")
-    print(f"Norm of normed embedding: {np.linalg.norm(normed_embedding):.6f}") # Should be very close to 1
+    # sanity check to make sure vectors look right
+    # print(f"Embedding length (first vector): {len(embedding_values_np[0,:])}")
+    # print(f"Norm of embedding (first vector): {np.linalg.norm(embedding_values_np[0,:]):.6f}")
+    # print(f"Embedding length (last vector): {len(embedding_values_np[BATCH_SIZE-1,:])}")
+    # print(f"Norm of embedding (last vector): {np.linalg.norm(embedding_values_np[BATCH_SIZE-1,:]):.6f}")
 
-    breakpoint()
+    # Calculate the norm for each row
+    # The axis=-1 argument ensures the norm is calculated along the last
+    # axis (rows for a 2D array) np.newaxis is used to reshape the norms
+    # into a column vector for broadcasting
+    row_norms = np.linalg.norm(embedding_values_np, axis=-1)[:, np.newaxis]
+    # Normalize each row by dividing by its corresponding norm
+    normed_embedding = embedding_values_np / row_norms
+
+    # sanity check to make sure vectors look right
+    # print(f"Normed embedding length (first vector): {len(normed_embedding[0,:])}")
+    # print(f"Norm of normed embedding (first vector): {np.linalg.norm(normed_embedding[0,:]):.6f}") # Should be very close to 1
+    # print(f"Normed embedding length (last vector): {len(normed_embedding[BATCH_SIZE-1,:])}")
+    # print(f"Norm of normed embedding (last vector): {np.linalg.norm(normed_embedding[BATCH_SIZE-1,:]):.6f}") # Should be very close to 1
 
     end_time = time.perf_counter()
 
+    # TODO: should we convert back to a 2d list after the numpy steps?  that
+    # might be more representative of what we have to do at db insert time
     return end_time-start_time
 
 
