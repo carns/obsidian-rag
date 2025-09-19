@@ -2,9 +2,11 @@
 
 import argparse
 import os
-from pymilvus import MilvusClient
+from pymilvus import MilvusClient, DataType
 from google import genai
 from google.genai import types
+import numpy as np
+from numpy.linalg import norm
 
 # --- Module-level Constants ---
 OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
@@ -12,6 +14,7 @@ OBSIDIAN_VAULT_DB = OBSIDIAN_VAULT_PATH + "/milvus_index.db"
 VECTOR_DIMENSIONS = 768
 # number of files to read and generate embeddings for at a time
 BATCH_SIZE = 10
+GEMINI_MODEL_NAME = "gemini-embedding-001" # Gemini model to use
 GEMINI_API_KEY_FILE = "~/.config/gemini.token" # file to read token from
 GEMINI_API_KEY_ENVVAR = "GOOGLE_API_KEY" # environment variable to get token from
 
@@ -71,11 +74,23 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
     print(f"[{vault_path}] Opening database...")
     client = MilvusClient(vault_db)
+
+    schema = MilvusClient.create_schema()
+
+    # specify schema, and ask Milvus to automatically generate IDs
+    schema.add_field(field_name="id", datatype=DataType.INT64,
+                     is_primary=True, auto_id=True,)
+    schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR,
+                     dim=VECTOR_DIMENSIONS)
+    schema.add_field(field_name="path", datatype=DataType.VARCHAR,
+                     max_length=512)
+
     if client.has_collection(collection_name="notes"):
         client.drop_collection(collection_name="notes")
     client.create_collection(
         collection_name="notes",
         dimension=VECTOR_DIMENSIONS,
+        schema=schema,
     )
 
     client = genai.Client(api_key=api_key)
@@ -94,40 +109,68 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                 filepath = os.path.join(root, filename)
                 try:
                     with open(filepath, 'r') as f:
-                        print(f"File: {filepath}")
                         content_list.append(f.read())
+                        if len(content_list[-1]) == 0:
+                            # Gemini won't generate embeddings for empty
+                            # strings; skip this file
+                            content_list.pop()
+                            print(f"File: {filepath} SKIPPING (empty)")
+                            continue
+                        print(f"File: {filepath} length {len(content_list[-1])}")
                         file_list.append(filepath)
                         total_file_count += 1
                         if len(content_list) == BATCH_SIZE:
-                            insert_into_db(content_list=content_list,
+                            insert_into_db(client=client, content_list=content_list,
                                            file_list=file_list)
-                            content_list = []
-                            file_list = []
+                            content_list.clear()
+                            file_list.clear()
                 except IOError as e:
                     print(f"Error reading file '{filepath}': {e}. Skipping.")
 
     # insert any leftovers
     if len(content_list) > 0:
-        insert_into_db(content_list=content_list,
+        insert_into_db(client=client, content_list=content_list,
                        file_list=file_list)
-        content_list = []
-        file_list = []
+        content_list.clear()
+        file_list.clear()
 
     print(f"Index regenerated successfully from {total_file_count} notes files.")
 
-def insert_into_db(content_list: list, file_list: list):
+def insert_into_db(client: genai.Client, content_list: list, file_list: list):
     """
     Inserts a list of elements into the vector db
 
     Args:
+        client (genai.Client): reference to a Gemini client
         content_list (list): list of text contents to be indexed
         file_list (list): list of file names corresponding to content_list
 
     """
 
-    print(content_list)
+    # generate vector for batch
+    result = client.models.embed_content(model=GEMINI_MODEL_NAME,
+                                         contents=content_list,
+                                         config=types.EmbedContentConfig(output_dimensionality=VECTOR_DIMENSIONS))
 
-#                        client.insert(collection_name="notes", data={"id": total_file_count, "vector": vectors[0], "path": filepath})
+    # load the resulting embeddings into a numpy 2D matrix, one row per
+    # embedding
+    embedding_values_np = np.empty((BATCH_SIZE, 768))
+    for i, embedding_obj in enumerate(result.embeddings):
+        embedding_values_np[i,:] = embedding_obj.values
+
+    # Calculate the norm for each row
+    # The axis=-1 argument ensures the norm is calculated along the last
+    # axis (rows for a 2D array) np.newaxis is used to reshape the norms
+    # into a column vector for broadcasting
+    row_norms = np.linalg.norm(embedding_values_np, axis=-1)[:, np.newaxis]
+    # Normalize each row by dividing by its corresponding norm
+    normed_embedding = embedding_values_np / row_norms
+
+
+
+    # print(content_list)
+
+    # client.insert(collection_name="notes", data={"id": total_file_count, "vector": vectors[0], "path": filepath})
 
 def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
     """
