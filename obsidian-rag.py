@@ -7,13 +7,15 @@ from google import genai
 from google.genai import types
 import numpy as np
 from numpy.linalg import norm
+import random
+import time
 
 # --- Module-level Constants ---
 OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
 OBSIDIAN_VAULT_DB = OBSIDIAN_VAULT_PATH + "/milvus_index.db"
 VECTOR_DIMENSIONS = 768
 # number of files to read and generate embeddings for at a time
-BATCH_SIZE = 10
+BATCH_SIZE = 100
 GEMINI_MODEL_NAME = "gemini-embedding-001" # Gemini model to use
 GEMINI_API_KEY_FILE = "~/.config/gemini.token" # file to read token from
 GEMINI_API_KEY_ENVVAR = "GOOGLE_API_KEY" # environment variable to get token from
@@ -73,7 +75,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     """
 
     print(f"[{vault_path}] Opening database...")
-    client = MilvusClient(vault_db)
+    mclient = MilvusClient(vault_db)
 
     schema = MilvusClient.create_schema()
 
@@ -85,15 +87,15 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     schema.add_field(field_name="path", datatype=DataType.VARCHAR,
                      max_length=512)
 
-    if client.has_collection(collection_name="notes"):
-        client.drop_collection(collection_name="notes")
-    client.create_collection(
+    if mclient.has_collection(collection_name="notes"):
+        mclient.drop_collection(collection_name="notes")
+    mclient.create_collection(
         collection_name="notes",
         dimension=VECTOR_DIMENSIONS,
         schema=schema,
     )
 
-    client = genai.Client(api_key=api_key)
+    gclient = genai.Client(api_key=api_key)
 
     print(f"[{vault_path}] Regenerating index...")
 
@@ -120,7 +122,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                         file_list.append(filepath)
                         total_file_count += 1
                         if len(content_list) == BATCH_SIZE:
-                            insert_into_db(client=client, content_list=content_list,
+                            insert_into_db(client=gclient, content_list=content_list,
                                            file_list=file_list)
                             content_list.clear()
                             file_list.clear()
@@ -129,7 +131,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
     # insert any leftovers
     if len(content_list) > 0:
-        insert_into_db(client=client, content_list=content_list,
+        insert_into_db(client=gclient, content_list=content_list,
                        file_list=file_list)
         content_list.clear()
         file_list.clear()
@@ -147,10 +149,34 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
 
     """
 
-    # generate vector for batch
-    result = client.models.embed_content(model=GEMINI_MODEL_NAME,
-                                         contents=content_list,
-                                         config=types.EmbedContentConfig(output_dimensionality=VECTOR_DIMENSIONS))
+    max_retries = 5
+    initial_delay = 60 # seconds
+
+    for i in range(max_retries):
+        try:
+            result = client.models.embed_content(model=GEMINI_MODEL_NAME,
+                                                 contents=content_list,
+                                                 config=types.EmbedContentConfig(output_dimensionality=VECTOR_DIMENSIONS))
+            # Process the successful response
+            print("API call successful!")
+            break # Exit the loop on success
+        # TODO: this doesn't really seem to work.  If I re-run this script
+        # from the beginning it is fine, though?  I'm not sure what's up.
+        except Exception as e:
+            if e.code == 429:
+                print(f"Rate limit exceeded (attempt {i+1}/{max_retries}): {e}")
+                if i < max_retries - 1:
+                    # Calculate delay with exponential backoff and jitter
+                    delay = initial_delay * (2 ** i) + random.uniform(0, 0.5) # Add jitter
+                    print(f"Waiting for {delay:.2f} seconds before retrying...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    print("Max retries reached. Aborting.")
+                    raise
+            else:
+                print(f"An unexpected error occurred: {e}")
+                raise
 
     # load the resulting embeddings into a numpy 2D matrix, one row per
     # embedding
