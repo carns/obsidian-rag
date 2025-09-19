@@ -86,18 +86,15 @@ def gen_embeddings_gemini_batch(contents:list) -> float:
     client = genai.Client(api_key=api_key)
 
     start_time = time.perf_counter()
-
-    # TODO: augment to specify embeddings
-    inline_requests_list = [
-        {'contents': [{'parts': [{'text': 'Write a short poem about a cloud.'}]}]},
-        {'contents': [{'parts': [{'text': 'Write a short poem about a cat.'}]}]}
-    ]
+    # TODO: can't figure out how to format this correctly in current API
+    inline_requests_list = {"foo":"bar"}
+    # breakpoint();
 
     # Create the batch job with the inline requests.
     print("Creating inline batch job...")
-    batch_job_inline = client.batches.create(
+    batch_job_inline = client.batches.create_embeddings(
         model=GEMINI_MODEL_NAME,
-        src=inline_requests_list,
+        src={'inlined_requests': inline_requests_list},
         config={'display_name': 'my-batch-job-inline-example'}
     )
     print(f"Created inline batch job: {batch_job_inline.name}")
