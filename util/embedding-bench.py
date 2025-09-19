@@ -64,6 +64,7 @@ def get_google_api_key() -> str:
 def gen_embeddings_gemini_batch(contents:list) -> float:
     """
     Generate embeddings for each of the text strings
+    TODO: this function doesn't work right
 
     Args:
         contents (list): list of strings
@@ -86,7 +87,36 @@ def gen_embeddings_gemini_batch(contents:list) -> float:
 
     start_time = time.perf_counter()
 
-    # TODO: fill this in, see google docs for batch mode
+    # TODO: augment to specify embeddings
+    inline_requests_list = [
+        {'contents': [{'parts': [{'text': 'Write a short poem about a cloud.'}]}]},
+        {'contents': [{'parts': [{'text': 'Write a short poem about a cat.'}]}]}
+    ]
+
+    # Create the batch job with the inline requests.
+    print("Creating inline batch job...")
+    batch_job_inline = client.batches.create(
+        model=GEMINI_MODEL_NAME,
+        src=inline_requests_list,
+        config={'display_name': 'my-batch-job-inline-example'}
+    )
+    print(f"Created inline batch job: {batch_job_inline.name}")
+    print("-" * 20)
+
+    # Monitor the job until completion.
+    job_name = batch_job_inline.name
+    print(f"Polling status for job: {job_name}")
+
+    while True:
+        batch_job_inline = client.batches.get(name=job_name)
+        if batch_job_inline.state.name in ('JOB_STATE_SUCCEEDED', 'JOB_STATE_FAILED', 'JOB_STATE_CANCELLED'):
+            break
+        print(f"Job not finished. Current state: {batch_job_inline.state.name}. Waiting 30 seconds...")
+        time.sleep(30)
+
+    print(f"Job finished with state: {batch_job_inline.state.name}")
+    if batch_job_inline.state.name == 'JOB_STATE_FAILED':
+        print(f"Error: {batch_job_inline.error}")
 
     end_time = time.perf_counter()
 
@@ -235,11 +265,14 @@ def main():
     print(f"Elapsed time (seconds) for encoding {BATCH_SIZE} files")
     print(f"-------------------------")
 
-    # elapsed = gen_embeddings_milvus_default(contents)
-    # print(f"Milvus DefaultEmbeddingFunction: {elapsed}")
+    elapsed = gen_embeddings_milvus_default(contents)
+    print(f"Milvus DefaultEmbeddingFunction: {elapsed}")
 
     elapsed = gen_embeddings_gemini(contents)
     print(f"Gemini: {elapsed}")
+
+    # elapsed = gen_embeddings_gemini_batch(contents)
+    # print(f"Gemini: {elapsed}")
 
     # print(contents)
 
