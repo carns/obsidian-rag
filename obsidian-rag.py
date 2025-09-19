@@ -69,7 +69,6 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
     """
 
-    # TODO: make this an argument
     print(f"[{vault_path}] Opening database...")
     client = MilvusClient(vault_db)
     if client.has_collection(collection_name="notes"):
