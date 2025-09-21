@@ -15,7 +15,7 @@ OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
 OBSIDIAN_VAULT_DB = OBSIDIAN_VAULT_PATH + "/milvus_index.db"
 VECTOR_DIMENSIONS = 768
 # number of files to read and generate embeddings for at a time
-BATCH_SIZE = 100
+BATCH_SIZE = 10
 GEMINI_MODEL_NAME = "gemini-embedding-001" # Gemini model to use
 GEMINI_API_KEY_FILE = "~/.config/gemini.token" # file to read token from
 GEMINI_API_KEY_ENVVAR = "GOOGLE_API_KEY" # environment variable to get token from
@@ -112,6 +112,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                 try:
                     with open(filepath, 'r') as f:
                         content_list.append(f.read())
+                        # content_list.append(f"{total_file_count} is a magic number")
                         if len(content_list[-1]) == 0:
                             # Gemini won't generate embeddings for empty
                             # strings; skip this file
@@ -150,7 +151,7 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
     """
 
     max_retries = 5
-    initial_delay = 60 # seconds
+    initial_delay = 30 # seconds
 
     for i in range(max_retries):
         try:
@@ -158,10 +159,8 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
                                                  contents=content_list,
                                                  config=types.EmbedContentConfig(output_dimensionality=VECTOR_DIMENSIONS))
             # Process the successful response
-            print("API call successful!")
+            # print("API call successful!")
             break # Exit the loop on success
-        # TODO: this doesn't really seem to work.  If I re-run this script
-        # from the beginning it is fine, though?  I'm not sure what's up.
         except Exception as e:
             if e.code == 429:
                 print(f"Rate limit exceeded (attempt {i+1}/{max_retries}): {e}")
@@ -192,7 +191,7 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
     # Normalize each row by dividing by its corresponding norm
     normed_embedding = embedding_values_np / row_norms
 
-
+    # TODO: insert into Milvus
 
     # print(content_list)
 
