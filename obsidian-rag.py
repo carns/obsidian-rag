@@ -268,7 +268,9 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
         output_fields=["path"],  # specifies fields to be returned
     )
 
-    print(res);
+    print(f"# <distance>\t<file>")
+    for hit in res[0]:
+        print(f"{hit['distance']}\t{hit['entity']['path']}")
 
 def main():
     """
