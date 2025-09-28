@@ -102,6 +102,8 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     # Iterate through vault looking for .md files.
     # For each directory in the tree rooted at the directory top (including
     # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
+    # TODO: two passes; one to count files, and one to actually process them.
+    # Then we can show percentage progress
     total_file_count = 0
     content_list = []
     file_list = []
@@ -123,7 +125,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                         file_list.append(filepath)
                         total_file_count += 1
                         if len(content_list) == BATCH_SIZE:
-                            insert_into_db(client=gclient, content_list=content_list,
+                            insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
                                            file_list=file_list)
                             content_list.clear()
                             file_list.clear()
@@ -132,19 +134,22 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
     # insert any leftovers
     if len(content_list) > 0:
-        insert_into_db(client=gclient, content_list=content_list,
+        insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
                        file_list=file_list)
         content_list.clear()
         file_list.clear()
 
     print(f"Index regenerated successfully from {total_file_count} notes files.")
 
-def insert_into_db(client: genai.Client, content_list: list, file_list: list):
+# TODO: We should have a concurrent pipeline going so that we concurrently
+# calculate embeddings and insert them into the database
+def insert_into_db(gclient: genai.Client, mclient: MilvusClient, content_list: list, file_list: list):
     """
     Inserts a list of elements into the vector db
 
     Args:
-        client (genai.Client): reference to a Gemini client
+        gclient (genai.Client): reference to a Gemini client
+        mclient (MilvusClient): reference to a Milvus client
         content_list (list): list of text contents to be indexed
         file_list (list): list of file names corresponding to content_list
 
@@ -155,7 +160,7 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
 
     for i in range(max_retries):
         try:
-            result = client.models.embed_content(model=GEMINI_MODEL_NAME,
+            result = gclient.models.embed_content(model=GEMINI_MODEL_NAME,
                                                  contents=content_list,
                                                  config=types.EmbedContentConfig(output_dimensionality=VECTOR_DIMENSIONS))
             # Process the successful response
@@ -179,7 +184,7 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
 
     # load the resulting embeddings into a numpy 2D matrix, one row per
     # embedding
-    embedding_values_np = np.empty((BATCH_SIZE, 768))
+    embedding_values_np = np.empty((len(content_list), 768))
     for i, embedding_obj in enumerate(result.embeddings):
         embedding_values_np[i,:] = embedding_obj.values
 
@@ -191,11 +196,15 @@ def insert_into_db(client: genai.Client, content_list: list, file_list: list):
     # Normalize each row by dividing by its corresponding norm
     normed_embedding = embedding_values_np / row_norms
 
-    # TODO: insert into Milvus
+    # constuct data to insert into Milvus.  Convert each numpy array row (each
+    # vector) into a list and associate with the corresponding path
+    # TODO: does Milvus support any other formats for the vector?
+    data = []
+    for vector, file in zip(normed_embedding, file_list):
+        data.append({"vector":vector.tolist(), "path":file})
 
-    # print(content_list)
+    mclient.insert(collection_name="notes", data=data)
 
-    # client.insert(collection_name="notes", data={"id": total_file_count, "vector": vectors[0], "path": filepath})
 
 def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
     """
