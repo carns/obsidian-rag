@@ -230,8 +230,8 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
     print(f"[{vault_path}] Querying for: '{query}'")
     # In a real scenario, you'd add your query logic here
     # Example: search your index, grep files, etc.
-    if query_string:
-        print(f"Search results for '{query_string}':")
+    if query:
+        print(f"Search results for '{query}':")
         # Simulate some results
         print("  - Found 'your_note_about_query.md'")
         print("  - Found 'another_relevant_document.md'")
