@@ -104,6 +104,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
     # TODO: two passes; one to count files, and one to actually process them.
     # Then we can show percentage progress
+    # TODO: also we should time this and report the elapsed time
     total_file_count = 0
     content_list = []
     file_list = []
