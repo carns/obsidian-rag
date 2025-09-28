@@ -225,10 +225,11 @@ def insert_into_db(gclient: genai.Client, mclient: MilvusClient, content_list: l
 
     # constuct data to insert into Milvus.  Convert each numpy array row (each
     # vector) into a list and associate with the corresponding path
-    # TODO: does Milvus support any other formats for the vector?
+
+    # note that Milvus natively supports Numpy arrays for dense vectors
     data = []
     for vector, file in zip(embedding_matrix, file_list):
-        data.append({"vector":vector.tolist(), "path":file})
+        data.append({"vector":vector, "path":file})
 
     mclient.insert(collection_name="notes", data=data)
 
@@ -259,11 +260,10 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
 
     print(f"[{vault_path}] Querying for: '{query}'")
 
-    # TODO: do we have to convert vector to list here, or are there other
-    # options?
+    # note that Milvus natively supports Numpy arrays for dense vectors
     res = client.search(
         collection_name="notes",  # target collection
-        data=embedding.tolist(),  # query vector
+        data=embedding,  # query vector
         limit=5,  # number of returned entities
         output_fields=["path"],  # specifies fields to be returned
     )
