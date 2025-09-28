@@ -77,9 +77,8 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     print(f"[{vault_path}] Opening database...")
     mclient = MilvusClient(vault_db)
 
-    schema = MilvusClient.create_schema()
-
     # specify schema, and ask Milvus to automatically generate IDs
+    schema = MilvusClient.create_schema()
     schema.add_field(field_name="id", datatype=DataType.INT64,
                      is_primary=True, auto_id=True,)
     schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR,
@@ -87,12 +86,21 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     schema.add_field(field_name="path", datatype=DataType.VARCHAR,
                      max_length=512)
 
+    # generate index for vector field
+    index_params = mclient.prepare_index_params()
+    index_params.add_index(
+        field_name="vector",
+        index_type="AUTOINDEX",
+        metric_type="COSINE"
+    )
+
     if mclient.has_collection(collection_name="notes"):
         mclient.drop_collection(collection_name="notes")
     mclient.create_collection(
         collection_name="notes",
         dimension=VECTOR_DIMENSIONS,
         schema=schema,
+        index_params=index_params
     )
 
     gclient = genai.Client(api_key=api_key)
@@ -246,19 +254,21 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
 
     gclient = genai.Client(api_key=api_key)
 
-
+    # generate embedding for the query
+    embedding = generate_embeddings(gclient, [query]);
 
     print(f"[{vault_path}] Querying for: '{query}'")
-    # In a real scenario, you'd add your query logic here
-    # Example: search your index, grep files, etc.
-    if query:
-        print(f"Search results for '{query}':")
-        # Simulate some results
-        print("  - Found 'your_note_about_query.md'")
-        print("  - Found 'another_relevant_document.md'")
-    else:
-        print("No query string provided.")
 
+    # TODO: do we have to convert vector to list here, or are there other
+    # options?
+    res = client.search(
+        collection_name="notes",  # target collection
+        data=embedding.tolist(),  # query vector
+        limit=5,  # number of returned entities
+        output_fields=["path"],  # specifies fields to be returned
+    )
+
+    print(res);
 
 def main():
     """
