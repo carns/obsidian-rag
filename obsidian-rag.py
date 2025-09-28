@@ -113,6 +113,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     # TODO: two passes; one to count files, and one to actually process them.
     # Then we can show percentage progress
     # TODO: also we should time this and report the elapsed time
+    #   we can use tqdm for the progress bar: https://github.com/tqdm/tqdm?tab=readme-ov-file#manual
     total_file_count = 0
     content_list = []
     file_list = []
