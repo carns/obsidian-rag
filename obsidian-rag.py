@@ -142,18 +142,17 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
     print(f"Index regenerated successfully from {total_file_count} notes files.")
 
-# TODO: We should have a concurrent pipeline going so that we concurrently
-# calculate embeddings and insert them into the database
-def insert_into_db(gclient: genai.Client, mclient: MilvusClient, content_list: list, file_list: list):
+def generate_embeddings(gclient: genai.Client, content_list: list) -> np.ndarray:
     """
-    Inserts a list of elements into the vector db
+    Generate normalized embeddings for a list of input contents
 
     Args:
         gclient (genai.Client): reference to a Gemini client
-        mclient (MilvusClient): reference to a Milvus client
-        content_list (list): list of text contents to be indexed
-        file_list (list): list of file names corresponding to content_list
+        content_list (list): list of strings for which embeddings will be calculated
 
+    Returns:
+        np.ndarray: a 2d array where each row corresponds to an embedding
+        vector for the corresponding content_list element
     """
 
     max_retries = 5
@@ -197,11 +196,30 @@ def insert_into_db(gclient: genai.Client, mclient: MilvusClient, content_list: l
     # Normalize each row by dividing by its corresponding norm
     normed_embedding = embedding_values_np / row_norms
 
+    return(normed_embedding)
+
+
+# TODO: We should have a concurrent pipeline going so that we concurrently
+# calculate embeddings and insert them into the database
+def insert_into_db(gclient: genai.Client, mclient: MilvusClient, content_list: list, file_list: list):
+    """
+    Inserts a list of elements into the vector db
+
+    Args:
+        gclient (genai.Client): reference to a Gemini client
+        mclient (MilvusClient): reference to a Milvus client
+        content_list (list): list of text contents to be indexed
+        file_list (list): list of file names corresponding to content_list
+
+    """
+
+    embedding_matrix = generate_embeddings(gclient, content_list);
+
     # constuct data to insert into Milvus.  Convert each numpy array row (each
     # vector) into a list and associate with the corresponding path
     # TODO: does Milvus support any other formats for the vector?
     data = []
-    for vector, file in zip(normed_embedding, file_list):
+    for vector, file in zip(embedding_matrix, file_list):
         data.append({"vector":vector.tolist(), "path":file})
 
     mclient.insert(collection_name="notes", data=data)
@@ -225,6 +243,9 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
         raise ValueError(
             f"'notes' collection not found in {vault_db}"
         )
+
+    gclient = genai.Client(api_key=api_key)
+
 
 
     print(f"[{vault_path}] Querying for: '{query}'")
