@@ -1,4 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
+tqdm
 pip-tools
 pymilvus
 argparse
@@ -7,3 +8,4 @@ torch==2.8.0+cpu
 torchvision==0.23.0+cpu
 google-genai
 numpy
+-e ./google-api-utils

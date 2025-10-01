@@ -10,6 +10,7 @@ from numpy.linalg import norm
 import random
 import time
 from google_api_utils import get_google_api_key, GoogleAPIKeyError
+from tqdm import tqdm
 
 
 # --- Module-level Constants ---
@@ -79,39 +80,42 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
     # TODO: also we should time this and report the elapsed time
     #   we can use tqdm for the progress bar: https://github.com/tqdm/tqdm?tab=readme-ov-file#manual
-    content_list = []
-    file_list = []
-    for root, _, files in os.walk(vault_path):
-        for filename in files:
-            if filename.endswith(".md"):
-                filepath = os.path.join(root, filename)
-                try:
-                    with open(filepath, 'r') as f:
-                        content_list.append(f.read())
-                        if len(content_list[-1]) == 0:
-                            # Gemini won't generate embeddings for empty
-                            # strings; skip this file
-                            content_list.pop()
-                            print(f"File: {filepath} SKIPPING (empty)")
-                            continue
-                        print(".", end='', flush=True)
-                        # print(f"File: {filepath} length {len(content_list[-1])}")
-                        file_list.append(filepath)
-                        if len(content_list) == BATCH_SIZE:
-                            insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
-                                           file_list=file_list)
-                            content_list.clear()
-                            file_list.clear()
-                except IOError as e:
-                    print(f"Error reading file '{filepath}': {e}. Skipping.")
-    print("")
+    with tqdm(total=total_file_count, desc="Obsidian notes", unit="note") as pbar:
+        content_list = []
+        file_list = []
+        for root, _, files in os.walk(vault_path):
+            for filename in files:
+                if filename.endswith(".md"):
+                    filepath = os.path.join(root, filename)
+                    try:
+                        with open(filepath, 'r') as f:
+                            content_list.append(f.read())
+                            if len(content_list[-1]) == 0:
+                                # Gemini won't generate embeddings for empty
+                                # strings; skip this file
+                                content_list.pop()
+                                print(f"File: {filepath} SKIPPING (empty)")
+                                continue
+                            # print(".", end='', flush=True)
+                            # print(f"File: {filepath} length {len(content_list[-1])}")
+                            file_list.append(filepath)
+                            if len(content_list) == BATCH_SIZE:
+                                insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
+                                               file_list=file_list)
+                                pbar.update(len(content_list))
+                                content_list.clear()
+                                file_list.clear()
+                    except IOError as e:
+                        print(f"Error reading file '{filepath}': {e}. Skipping.")
+        # print("")
 
-    # insert any leftovers
-    if len(content_list) > 0:
-        insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
-                       file_list=file_list)
-        content_list.clear()
-        file_list.clear()
+        # insert any leftovers
+        if len(content_list) > 0:
+            insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
+                           file_list=file_list)
+            pbar.update(len(content_list))
+            content_list.clear()
+            file_list.clear()
 
     print(f"[{vault_path}] Index regenerated successfully.")
 
