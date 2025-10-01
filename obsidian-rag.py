@@ -11,14 +11,14 @@ import random
 import time
 from google_api_utils import get_google_api_key, GoogleAPIKeyError
 from tqdm import tqdm
-
+import time
 
 # --- Module-level Constants ---
 OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
 OBSIDIAN_VAULT_DB = OBSIDIAN_VAULT_PATH + "/milvus_index.db"
 VECTOR_DIMENSIONS = 768
 # number of files to read and generate embeddings for at a time
-BATCH_SIZE = 10
+BATCH_SIZE = 64
 GEMINI_MODEL_NAME = "gemini-embedding-001" # Gemini model to use
 
 def regenerate_index(api_key:str, vault_db:str, vault_path:str):
@@ -75,6 +75,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
         sys.exit(1);
 
     print(f"[{vault_path}] Regenerating index from {total_file_count} files...")
+    start_time = time.perf_counter()
     # Iterate through vault and process files 
     # For each directory in the tree rooted at the directory top (including
     # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
@@ -117,7 +118,8 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
             content_list.clear()
             file_list.clear()
 
-    print(f"[{vault_path}] Index regenerated successfully.")
+    end_time = time.perf_counter()
+    print(f"[{vault_path}] Index regenerated in {end_time-start_time} seconds.")
 
 def generate_embeddings(gclient: genai.Client, content_list: list) -> np.ndarray:
     """
