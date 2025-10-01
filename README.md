@@ -22,3 +22,11 @@ Example output from a query:
 Modify the constants at the top of `obsidian-rag.py` to specify the path to your Obsidian vault and the parameters for your embedding model (including how to obtain your Gemini API key).
 
 There is also a simple benchmark in the `util` directory that can be used to benchmark different embedding models.
+
+## Installation
+
+* `git submodule init`
+* `git submodule update`
+* create a python venv
+* `pip install -r requirements.txt`
+* `pip install google-api-utils/`

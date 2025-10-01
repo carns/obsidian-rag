@@ -1,0 +1,3 @@
+[submodule "google-api-utils"]
+	path = google-api-utils
+	url = https://github.com/carns/google-api-utils

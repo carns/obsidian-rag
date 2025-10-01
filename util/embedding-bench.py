@@ -9,57 +9,13 @@ from pymilvus import MilvusClient
 from pymilvus import model
 from google import genai
 from google.genai import types
+from google_api_utils import get_google_api_key, GoogleAPIKeyError
 
 # --- Module-level Constants ---
 OBSIDIAN_VAULT_PATH = "/home/carns/Documents/carns-obsidian"
 OBSIDIAN_VAULT_DB = OBSIDIAN_VAULT_PATH + "/milvus_index.db"
 BATCH_SIZE = 10
 GEMINI_MODEL_NAME = "gemini-embedding-001" # Gemini model to use
-GEMINI_API_KEY_FILE = "~/.config/gemini.token" # file to read token from
-GEMINI_API_KEY_ENVVAR = "GOOGLE_API_KEY" # environment variable to get token from
-
-class GoogleAPIKeyError(Exception):
-    """Custom exception raised when the Google API key cannot be found."""
-    pass
-
-def get_google_api_key() -> str:
-    """
-    Find Google API key to use.
-
-    Tries multiple methods, starting with environment variable then a configuration file
-
-    Raises:
-        GoogleAPIKeyError: If the Google API key cannot be found.
-
-    Returns:
-        str: The found Google API key.
-    """
-
-    # try environment variable first
-    google_api_key = os.getenv(GEMINI_API_KEY_ENVVAR)
-    if google_api_key:
-        return google_api_key
-
-    # try file next, continue if not found
-    try:
-        file_path = os.path.expanduser(GEMINI_API_KEY_FILE)
-        with open(file_path, 'r') as f:
-            google_api_key = f.read().strip()
-            return google_api_key
-    except FileNotFoundError:
-        # File doesn't exist, which is expected if not configured this way.
-        pass
-    # don't catch other exceptions; those would be unexpected
-
-    # NOTE: I would like to also support getting an API key from gnome keyring.  That would be an exercise for later.
-
-    # raise an exception if we get this far without finding an API key
-    if google_api_key is None:
-        raise GoogleAPIKeyError(
-                f"could not find Google API key in ${GEMINI_API_KEY_ENVVAR} or '{GEMINI_API_KEY_FILE}'"
-        )
-
-    return google_api_key
 
 def gen_embeddings_gemini_batch(contents:list) -> float:
     """
