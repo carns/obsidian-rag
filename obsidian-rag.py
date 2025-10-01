@@ -62,16 +62,23 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
     gclient = genai.Client(api_key=api_key)
 
-    print(f"[{vault_path}] Regenerating index...")
+    # walk vault and see how many files there are
+    print(f"[{vault_path}] Looking for markdown files...")
+    total_file_count = 0
+    for root, _, files in os.walk(vault_path):
+        for filename in files:
+            if filename.endswith(".md"):
+                total_file_count += 1;
+    if total_file_count == 0:
+        print(f"[{vault_path}] No files found!")
+        sys.exit(1);
 
-    # Iterate through vault looking for .md files.
+    print(f"[{vault_path}] Regenerating index from {total_file_count} files...")
+    # Iterate through vault and process files 
     # For each directory in the tree rooted at the directory top (including
     # top itself), os.walk yields a 3-tuple (dirpath, subdirnames, filenames).
-    # TODO: two passes; one to count files, and one to actually process them.
-    # Then we can show percentage progress
     # TODO: also we should time this and report the elapsed time
     #   we can use tqdm for the progress bar: https://github.com/tqdm/tqdm?tab=readme-ov-file#manual
-    total_file_count = 0
     content_list = []
     file_list = []
     for root, _, files in os.walk(vault_path):
@@ -81,16 +88,15 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                 try:
                     with open(filepath, 'r') as f:
                         content_list.append(f.read())
-                        # content_list.append(f"{total_file_count} is a magic number")
                         if len(content_list[-1]) == 0:
                             # Gemini won't generate embeddings for empty
                             # strings; skip this file
                             content_list.pop()
                             print(f"File: {filepath} SKIPPING (empty)")
                             continue
-                        print(f"File: {filepath} length {len(content_list[-1])}")
+                        print(".", end='', flush=True)
+                        # print(f"File: {filepath} length {len(content_list[-1])}")
                         file_list.append(filepath)
-                        total_file_count += 1
                         if len(content_list) == BATCH_SIZE:
                             insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
                                            file_list=file_list)
@@ -98,6 +104,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                             file_list.clear()
                 except IOError as e:
                     print(f"Error reading file '{filepath}': {e}. Skipping.")
+    print("")
 
     # insert any leftovers
     if len(content_list) > 0:
@@ -106,7 +113,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
         content_list.clear()
         file_list.clear()
 
-    print(f"Index regenerated successfully from {total_file_count} notes files.")
+    print(f"[{vault_path}] Index regenerated successfully.")
 
 def generate_embeddings(gclient: genai.Client, content_list: list) -> np.ndarray:
     """
