@@ -158,11 +158,12 @@ class dummy_embedder(embedder):
         return(normed_embedding)
 
 
-def regenerate_index(vault_db:str, vault_path:str):
+def regenerate_index(embedder: embedder, vault_db:str, vault_path:str):
     """
     Regenerate vector DB index
 
     Args:
+        embedder (embedder): embedder object to use
         vault_path (str): path to Obsidian vault
         vault_db (str): path to DB
     """
@@ -195,9 +196,6 @@ def regenerate_index(vault_db:str, vault_path:str):
         schema=schema,
         index_params=index_params
     )
-
-    my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
-                                  model_name=GEMINI_MODEL_NAME)
 
     # walk vault and see how many files there are
     print(f"[{vault_path}] Looking for markdown files...")
@@ -237,7 +235,7 @@ def regenerate_index(vault_db:str, vault_path:str):
                             # print(f"File: {filepath} length {len(content_list[-1])}")
                             file_list.append(filepath)
                             if len(content_list) == BATCH_SIZE:
-                                insert_into_db(embedder=my_embedder, mclient=mclient, content_list=content_list,
+                                insert_into_db(embedder=embedder, mclient=mclient, content_list=content_list,
                                                file_list=file_list)
                                 pbar.update(len(content_list))
                                 content_list.clear()
@@ -248,7 +246,7 @@ def regenerate_index(vault_db:str, vault_path:str):
 
         # insert any leftovers
         if len(content_list) > 0:
-            insert_into_db(embedder=my_embedder, mclient=mclient, content_list=content_list,
+            insert_into_db(embedder=embedder, mclient=mclient, content_list=content_list,
                            file_list=file_list)
             pbar.update(len(content_list))
             content_list.clear()
@@ -285,11 +283,12 @@ def insert_into_db(embedder: embedder, mclient: MilvusClient, content_list: list
     mclient.insert(collection_name="notes", data=data)
 
 
-def query_vault(query: str, vault_db: str, vault_path: str):
+def query_vault(embedder: embedder, query: str, vault_db: str, vault_path: str):
     """
     Placeholder function for querying the vault.
 
     Args:
+        embedder (embedder): embedder object
         query (str): Query string
         vault_db (str): path to DB
         vault_path (str): path to Obsidian vault
@@ -303,11 +302,8 @@ def query_vault(query: str, vault_db: str, vault_path: str):
             f"'notes' collection not found in {vault_db}"
         )
 
-    my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
-                                  model_name=GEMINI_MODEL_NAME);
-
     # generate embedding for the query
-    embedding = my_embedder.generate_embeddings([query]);
+    embedding = embedder.generate_embeddings([query]);
 
     print(f"[{vault_path}] Querying for: '{query}'")
 
@@ -356,12 +352,15 @@ def main():
         print("Please ensure the path is correct or update OBSIDIAN_VAULT_PATH.")
         return
 
+    my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
+                                  model_name=GEMINI_MODEL_NAME)
+
     # Check which options were provided and call the corresponding functions
     if args.index:
-        regenerate_index(vault_path=OBSIDIAN_VAULT_PATH,
+        regenerate_index(embedder=my_embedder, vault_path=OBSIDIAN_VAULT_PATH,
                          vault_db=OBSIDIAN_VAULT_DB)
     elif args.query is not None: # `is not None` because an empty string '' is also a valid query
-        query_vault(query=args.query,
+        query_vault(embedder=my_embedder, query=args.query,
                     vault_path=OBSIDIAN_VAULT_PATH,
                     vault_db=OBSIDIAN_VAULT_DB)
     else:
