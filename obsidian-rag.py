@@ -120,6 +120,36 @@ class gemini_embedder(embedder):
 
         return(normed_embedding)
 
+# embedding function that just makes up random numbers with a delay
+class dummy_embedder(embedder):
+    def __init__(self, num_dimensions: int, delay_ms: int):
+        super().__init__(num_dimensions)
+        self.delay_ms = delay_ms
+
+    def generate_embeddings(self, content_list: list) -> np.ndarray:
+        """
+        Generate normalized embeddings for a list of input contents
+
+        Args:
+            content_list (list): list of strings for which embeddings will be calculated
+
+        Returns:
+            np.ndarray: a 2d array where each row corresponds to an embedding
+            vector for the corresponding content_list element
+        """
+        # generate random numbers
+        embedding_values_np = np.random.rand((len(content_list),
+                                        self.num_dimensions))
+        # Calculate the norm for each row
+        # The axis=-1 argument ensures the norm is calculated along the last
+        # axis (rows for a 2D array) np.newaxis is used to reshape the norms
+        # into a column vector for broadcasting
+        row_norms = np.linalg.norm(embedding_values_np, axis=-1)[:, np.newaxis]
+        # Normalize each row by dividing by its corresponding norm
+        normed_embedding = embedding_values_np / row_norms
+
+        return(normed_embedding)
+
 
 def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     """
