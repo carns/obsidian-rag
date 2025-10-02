@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import argparse
 import os
 from pymilvus import MilvusClient, DataType
@@ -344,16 +345,29 @@ def main():
         help='Specify a string to query the Obsidian vault.'
     )
 
+    # Option for specifying an embedding model
+    parser.add_argument(
+        '-e', '--embedding',
+        type=str,  # Specifies that the argument expects a string value
+        metavar='MODEL', # How the argument will be displayed in help message
+        default='gemini',
+        help='Specify what embedding model to use'
+    )
+
     args = parser.parse_args()
 
     # Ensure the vault path exists (optional, but good practice)
     if not os.path.exists(OBSIDIAN_VAULT_PATH):
         print(f"Error: Obsidian vault path not found: {OBSIDIAN_VAULT_PATH}")
         print("Please ensure the path is correct or update OBSIDIAN_VAULT_PATH.")
-        return
+        sys.exit(1)
 
-    my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
-                                  model_name=GEMINI_MODEL_NAME)
+    if args.embedding == "gemini":
+        my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
+                                      model_name=GEMINI_MODEL_NAME)
+    else:
+        print(f"Error: embedding model '{args.embedding}' is not supported")
+        sys.exit(1)
 
     # Check which options were provided and call the corresponding functions
     if args.index:
