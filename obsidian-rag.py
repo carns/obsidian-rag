@@ -21,6 +21,106 @@ VECTOR_DIMENSIONS = 768
 BATCH_SIZE = 64
 GEMINI_MODEL_NAME = "gemini-embedding-001" # Gemini model to use
 
+# base class for any embedding methods we want to support
+class embedder:
+    def __init__(self, num_dimensions: int):
+        self.num_dimensions = num_dimensions
+
+    def generate_embeddings(self, data: list) -> np.ndarray:
+        return np.ndarray([])
+
+# TODO: have an api_key argument here, or just call the utility function to
+# get it?
+# embedding function that uses a hosted Gemini model
+class gemini_embedder(embedder):
+    def __init__(self, num_dimensions: int, api_key: str, model_name: str):
+        """
+        Initializes the instance, setting up the Google Generative AI client and
+        model configuration.
+
+        This constructor calls the parent class's __init__ method with
+        `num_dimensions` and then instantiates a `genai.Client` using the
+        provided `api_key`.  The `model_name` is stored for subsequent
+        operations with the Generative AI service.
+
+        Args:
+            num_dimensions (int): The number of dimensions to initialize the base
+                                  class with. This typically relates to the
+                                  vector space or embedding size managed by the
+                                  parent class.
+            api_key (str): Your Google Generative AI API key for authentication.
+                           This key is used to create an authenticated client.
+            model_name (str): The name of the Generative AI model to use for
+                              operations (e.g., 'gemini-pro', 'embedding-001').
+
+        Attributes:
+            model_name (str): The name of the Generative AI model configured
+                              for this instance.
+            gclient (genai.Client): An authenticated client object for interacting
+                                    with the Google Generative AI service.
+        """
+
+        super().__init__(num_dimensions)
+        self.model_name = model_name
+        self.gclient = genai.Client(api_key=api_key)
+
+    def generate_embeddings(self, content_list: list) -> np.ndarray:
+        """
+        Generate normalized embeddings for a list of input contents 
+
+        Args:
+            content_list (list): list of strings for which embeddings will be calculated
+
+        Returns:
+            np.ndarray: a 2d array where each row corresponds to an embedding
+            vector for the corresponding content_list element
+        """
+
+        max_retries = 5
+        initial_delay = 30 # seconds
+
+        for i in range(max_retries):
+            try:
+                result = self.gclient.models.embed_content(model=self.model_name,
+                                                     contents=content_list,
+                                                     config=types.EmbedContentConfig(output_dimensionality=self.num_dimensions))
+                # Process the successful response
+                # print("API call successful!")
+                break # Exit the loop on success
+            except Exception as e:
+                if e.code == 429:
+                    print(f"Rate limit exceeded (attempt {i+1}/{max_retries}): {e}")
+                    if i < max_retries - 1:
+                        # Calculate delay with exponential backoff and jitter
+                        delay = initial_delay * (2 ** i) + random.uniform(0, 0.5) # Add jitter
+                        print(f"Waiting for {delay:.2f} seconds before retrying...")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        print("Max retries reached. Aborting.")
+                        raise
+                else:
+                    print(f"An unexpected error occurred: {e}")
+                    raise
+
+        # load the resulting embeddings into a numpy 2D matrix, one row per
+        # embedding
+        embedding_values_np = np.empty((len(content_list),
+                                        self.num_dimensions))
+        for i, embedding_obj in enumerate(result.embeddings):
+            embedding_values_np[i,:] = embedding_obj.values
+
+        # Calculate the norm for each row
+        # The axis=-1 argument ensures the norm is calculated along the last
+        # axis (rows for a 2D array) np.newaxis is used to reshape the norms
+        # into a column vector for broadcasting
+        row_norms = np.linalg.norm(embedding_values_np, axis=-1)[:, np.newaxis]
+        # Normalize each row by dividing by its corresponding norm
+        normed_embedding = embedding_values_np / row_norms
+
+        return(normed_embedding)
+
+
 def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     """
     Regenerate vector DB index
@@ -29,7 +129,6 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
         api_key (str): api_key for Gemini
         vault_path (str): path to Obsidian vault
         vault_db (str): path to DB
-
     """
 
     print(f"[{vault_path}] Opening database...")
@@ -61,7 +160,9 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
         index_params=index_params
     )
 
-    gclient = genai.Client(api_key=api_key)
+    my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
+                                  api_key=api_key,
+                                  model_name=GEMINI_MODEL_NAME)
 
     # walk vault and see how many files there are
     print(f"[{vault_path}] Looking for markdown files...")
@@ -101,7 +202,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
                             # print(f"File: {filepath} length {len(content_list[-1])}")
                             file_list.append(filepath)
                             if len(content_list) == BATCH_SIZE:
-                                insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
+                                insert_into_db(embedder=my_embedder, mclient=mclient, content_list=content_list,
                                                file_list=file_list)
                                 pbar.update(len(content_list))
                                 content_list.clear()
@@ -112,7 +213,7 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
 
         # insert any leftovers
         if len(content_list) > 0:
-            insert_into_db(gclient=gclient, mclient=mclient, content_list=content_list,
+            insert_into_db(embedder=my_embedder, mclient=mclient, content_list=content_list,
                            file_list=file_list)
             pbar.update(len(content_list))
             content_list.clear()
@@ -121,78 +222,22 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     end_time = time.perf_counter()
     print(f"[{vault_path}] Index regenerated in {end_time-start_time} seconds.")
 
-def generate_embeddings(gclient: genai.Client, content_list: list) -> np.ndarray:
-    """
-    Generate normalized embeddings for a list of input contents
-
-    Args:
-        gclient (genai.Client): reference to a Gemini client
-        content_list (list): list of strings for which embeddings will be calculated
-
-    Returns:
-        np.ndarray: a 2d array where each row corresponds to an embedding
-        vector for the corresponding content_list element
-    """
-
-    max_retries = 5
-    initial_delay = 30 # seconds
-
-    for i in range(max_retries):
-        try:
-            result = gclient.models.embed_content(model=GEMINI_MODEL_NAME,
-                                                 contents=content_list,
-                                                 config=types.EmbedContentConfig(output_dimensionality=VECTOR_DIMENSIONS))
-            # Process the successful response
-            # print("API call successful!")
-            break # Exit the loop on success
-        except Exception as e:
-            if e.code == 429:
-                print(f"Rate limit exceeded (attempt {i+1}/{max_retries}): {e}")
-                if i < max_retries - 1:
-                    # Calculate delay with exponential backoff and jitter
-                    delay = initial_delay * (2 ** i) + random.uniform(0, 0.5) # Add jitter
-                    print(f"Waiting for {delay:.2f} seconds before retrying...")
-                    time.sleep(delay)
-                    continue
-                else:
-                    print("Max retries reached. Aborting.")
-                    raise
-            else:
-                print(f"An unexpected error occurred: {e}")
-                raise
-
-    # load the resulting embeddings into a numpy 2D matrix, one row per
-    # embedding
-    embedding_values_np = np.empty((len(content_list), 768))
-    for i, embedding_obj in enumerate(result.embeddings):
-        embedding_values_np[i,:] = embedding_obj.values
-
-    # Calculate the norm for each row
-    # The axis=-1 argument ensures the norm is calculated along the last
-    # axis (rows for a 2D array) np.newaxis is used to reshape the norms
-    # into a column vector for broadcasting
-    row_norms = np.linalg.norm(embedding_values_np, axis=-1)[:, np.newaxis]
-    # Normalize each row by dividing by its corresponding norm
-    normed_embedding = embedding_values_np / row_norms
-
-    return(normed_embedding)
-
 
 # TODO: We should have a concurrent pipeline going so that we concurrently
 # calculate embeddings and insert them into the database
-def insert_into_db(gclient: genai.Client, mclient: MilvusClient, content_list: list, file_list: list):
+def insert_into_db(embedder: embedder, mclient: MilvusClient, content_list: list, file_list: list):
     """
     Inserts a list of elements into the vector db
 
     Args:
-        gclient (genai.Client): reference to a Gemini client
+        embedder (embedder): embedder object
         mclient (MilvusClient): reference to a Milvus client
         content_list (list): list of text contents to be indexed
         file_list (list): list of file names corresponding to content_list
 
     """
 
-    embedding_matrix = generate_embeddings(gclient, content_list);
+    embedding_matrix = embedder.generate_embeddings(content_list);
 
     # constuct data to insert into Milvus.  Convert each numpy array row (each
     # vector) into a list and associate with the corresponding path
@@ -224,10 +269,12 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
             f"'notes' collection not found in {vault_db}"
         )
 
-    gclient = genai.Client(api_key=api_key)
+    my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
+                                  api_key=api_key,
+                                  model_name=GEMINI_MODEL_NAME);
 
     # generate embedding for the query
-    embedding = generate_embeddings(gclient, [query]);
+    embedding = my_embedder.generate_embeddings([query]);
 
     print(f"[{vault_path}] Querying for: '{query}'")
 
