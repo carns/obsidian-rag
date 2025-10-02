@@ -146,8 +146,8 @@ class dummy_embedder(embedder):
             vector for the corresponding content_list element
         """
         # generate random numbers
-        embedding_values_np = np.random.rand((len(content_list),
-                                        self.num_dimensions))
+        embedding_values_np = np.random.rand(len(content_list),
+                                        self.num_dimensions)
         # Calculate the norm for each row
         # The axis=-1 argument ensures the norm is calculated along the last
         # axis (rows for a 2D array) np.newaxis is used to reshape the norms
@@ -155,6 +155,9 @@ class dummy_embedder(embedder):
         row_norms = np.linalg.norm(embedding_values_np, axis=-1)[:, np.newaxis]
         # Normalize each row by dividing by its corresponding norm
         normed_embedding = embedding_values_np / row_norms
+
+        # also add an artificial delay per embedding
+        time.sleep(self.delay_ms*len(content_list)/1000)
 
         return(normed_embedding)
 
@@ -365,6 +368,9 @@ def main():
     if args.embedding == "gemini":
         my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
                                       model_name=GEMINI_MODEL_NAME)
+    elif args.embedding == "dummy":
+        my_embedder = dummy_embedder(num_dimensions=VECTOR_DIMENSIONS,
+                                     delay_ms=10)
     else:
         print(f"Error: embedding model '{args.embedding}' is not supported")
         sys.exit(1)
