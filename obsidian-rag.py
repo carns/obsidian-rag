@@ -29,27 +29,23 @@ class embedder:
     def generate_embeddings(self, data: list) -> np.ndarray:
         return np.ndarray([])
 
-# TODO: have an api_key argument here, or just call the utility function to
-# get it?
 # embedding function that uses a hosted Gemini model
 class gemini_embedder(embedder):
-    def __init__(self, num_dimensions: int, api_key: str, model_name: str):
+    def __init__(self, num_dimensions: int, model_name: str):
         """
         Initializes the instance, setting up the Google Generative AI client and
         model configuration.
 
         This constructor calls the parent class's __init__ method with
-        `num_dimensions` and then instantiates a `genai.Client` using the
-        provided `api_key`.  The `model_name` is stored for subsequent
-        operations with the Generative AI service.
+        `num_dimensions` and then instantiates a `genai.Client`.  The
+        `model_name` is stored for subsequent operations with the Generative
+        AI service.
 
         Args:
             num_dimensions (int): The number of dimensions to initialize the base
                                   class with. This typically relates to the
                                   vector space or embedding size managed by the
                                   parent class.
-            api_key (str): Your Google Generative AI API key for authentication.
-                           This key is used to create an authenticated client.
             model_name (str): The name of the Generative AI model to use for
                               operations (e.g., 'gemini-pro', 'embedding-001').
 
@@ -62,6 +58,17 @@ class gemini_embedder(embedder):
 
         super().__init__(num_dimensions)
         self.model_name = model_name
+
+        # get api key for Gemini
+        try:
+            api_key = get_google_api_key()
+        except GoogleAPIKeyError as e:
+            print(f"Error: could not ackquire API key: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: unexpected error: {e}", file=sys.stderr)
+            sys.exit(1)
+
         self.gclient = genai.Client(api_key=api_key)
 
     def generate_embeddings(self, content_list: list) -> np.ndarray:
@@ -151,12 +158,11 @@ class dummy_embedder(embedder):
         return(normed_embedding)
 
 
-def regenerate_index(api_key:str, vault_db:str, vault_path:str):
+def regenerate_index(vault_db:str, vault_path:str):
     """
     Regenerate vector DB index
 
     Args:
-        api_key (str): api_key for Gemini
         vault_path (str): path to Obsidian vault
         vault_db (str): path to DB
     """
@@ -191,7 +197,6 @@ def regenerate_index(api_key:str, vault_db:str, vault_path:str):
     )
 
     my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
-                                  api_key=api_key,
                                   model_name=GEMINI_MODEL_NAME)
 
     # walk vault and see how many files there are
@@ -280,13 +285,12 @@ def insert_into_db(embedder: embedder, mclient: MilvusClient, content_list: list
     mclient.insert(collection_name="notes", data=data)
 
 
-def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
+def query_vault(query: str, vault_db: str, vault_path: str):
     """
     Placeholder function for querying the vault.
 
     Args:
         query (str): Query string
-        api_key (str): API key for Gemini
         vault_db (str): path to DB
         vault_path (str): path to Obsidian vault
     """
@@ -300,7 +304,6 @@ def query_vault(query: str, api_key: str, vault_db: str, vault_path: str):
         )
 
     my_embedder = gemini_embedder(num_dimensions=VECTOR_DIMENSIONS,
-                                  api_key=api_key,
                                   model_name=GEMINI_MODEL_NAME);
 
     # generate embedding for the query
@@ -353,22 +356,12 @@ def main():
         print("Please ensure the path is correct or update OBSIDIAN_VAULT_PATH.")
         return
 
-    # get api key for Gemini
-    try:
-        api_key = get_google_api_key()
-    except GoogleAPIKeyError as e:
-        print(f"Error: could not ackquire API key: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: unexpected error: {e}", file=sys.stderr)
-        sys.exit(1)
-
     # Check which options were provided and call the corresponding functions
     if args.index:
-        regenerate_index(api_key=api_key, vault_path=OBSIDIAN_VAULT_PATH,
+        regenerate_index(vault_path=OBSIDIAN_VAULT_PATH,
                          vault_db=OBSIDIAN_VAULT_DB)
     elif args.query is not None: # `is not None` because an empty string '' is also a valid query
-        query_vault(query=args.query, api_key=api_key,
+        query_vault(query=args.query,
                     vault_path=OBSIDIAN_VAULT_PATH,
                     vault_db=OBSIDIAN_VAULT_DB)
     else:
